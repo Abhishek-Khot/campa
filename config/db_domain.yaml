@@ -1,0 +1,207 @@
+source_config:
+  # ─── MongoDB ───
+  - name: product_mongo
+    type: nosql
+    driver: mongodb
+    uri: ${MONGO_URI}
+    database: ${MONGO_DB}
+    read_only: true
+    pool_size: 1
+    timeout_ms: 3000
+
+  # ─── Redis ───
+  - name: session_redis
+    type: nosql
+    driver: redis
+    uri: ${REDIS_URI}
+    socket_timeout: 3
+    db: 0
+
+  # ─── Cassandra ───
+  - name: timeseries_cassandra
+    type: nosql
+    driver: cassandra
+    contact_points: ${CASSANDRA_HOSTS}
+    port: 9042
+    keyspace: ${CASSANDRA_KEYSPACE}
+    username: ${CASSANDRA_USER}
+    password: ${CASSANDRA_PASSWORD}
+    timeout_seconds: 5
+
+  # ─── DynamoDB ───
+  - name: users_dynamodb
+    type: nosql
+    driver: dynamodb
+    region: ${AWS_REGION}
+    access_key: ${AWS_ACCESS_KEY}
+    secret_key: ${AWS_SECRET_KEY}
+    endpoint_url: ${DYNAMODB_ENDPOINT}
+
+  # ─── Couchbase ───
+  - name: catalog_couchbase
+    type: nosql
+    driver: couchbase
+    connection_string: ${COUCHBASE_URI}
+    username: ${COUCHBASE_USER}
+    password: ${COUCHBASE_PASSWORD}
+    bucket: ${COUCHBASE_BUCKET}
+    timeout_seconds: 5
+
+
+# ══════════════════════════════════════════════════════
+# Schema metadata — injected into LLM context
+# ══════════════════════════════════════════════════════
+
+source_details:
+  # ─── MongoDB schema ───
+  product_mongo:
+    source_name: product_mongo
+    collections:
+      - name: customers
+        description: Customer information
+        fields:
+          - { name: _id,    type: string,  description: Customer ID }
+          - { name: name,   type: string,  description: Full name }
+          - { name: email,  type: string,  description: Email address }
+          - { name: region, type: string,  description: Geographic region }
+
+      - name: products
+        description: Product catalog
+        fields:
+          - { name: sku,      type: string,  description: Product SKU }
+          - { name: name,     type: string,  description: Product name }
+          - { name: category, type: string,  description: Category }
+          - { name: price,    type: decimal, description: Price }
+          - { name: stock,    type: integer, description: Stock quantity }
+          - { name: rating,   type: decimal, description: Average rating, range: '1-5' }
+
+      - name: orders
+        description: Customer orders
+        fields:
+          - { name: order_id,    type: string,  description: Order ID }
+          - { name: customer_id, type: string,  description: Customer reference }
+          - { name: total,       type: decimal, description: Order total }
+          - { name: status,      type: string,  description: 'Order status: pending, shipped, delivered' }
+
+  # ─── Redis schema ───
+  session_redis:
+    source_name: session_redis
+    key_patterns:
+      - pattern: 'session:{user_id}'
+        description: Active user session data
+        value_type: hash
+        fields: ['user_id', 'email', 'login_at', 'expires_at']
+
+      - pattern: 'cart:{user_id}'
+        description: Shopping cart items
+        value_type: list
+
+      - pattern: 'leaderboard:daily'
+        description: Daily user scores
+        value_type: sorted_set
+
+  # ─── Cassandra schema ───
+  timeseries_cassandra:
+    source_name: timeseries_cassandra
+    cassandra_tables:
+      - name: sensor_readings
+        description: IoT sensor time-series data
+        columns:
+          - { name: sensor_id,   type: uuid,      partition_key: true }
+          - { name: timestamp,   type: timestamp,  clustering_key: true }
+          - { name: temperature, type: double }
+          - { name: humidity,    type: double }
+          - { name: location,    type: text }
+
+      - name: user_activity
+        description: User event tracking
+        columns:
+          - { name: user_id,    type: uuid,      partition_key: true }
+          - { name: event_time, type: timestamp,  clustering_key: true }
+          - { name: event_type, type: text }
+          - { name: metadata,   type: map }
+
+  # ─── DynamoDB schema ───
+  users_dynamodb:
+    source_name: users_dynamodb
+    dynamodb_tables:
+      - name: Users
+        description: User profiles and authentication
+        keys:
+          partition_key: { name: user_id, type: S }
+        attributes:
+          - { name: email,             type: S }
+          - { name: name,              type: S }
+          - { name: created_at,        type: N }
+          - { name: subscription_tier, type: S, values: [free, pro, enterprise] }
+
+      - name: Orders
+        description: E-commerce orders
+        keys:
+          partition_key: { name: order_id, type: S }
+          sort_key:      { name: created_at, type: N }
+        attributes:
+          - { name: user_id, type: S }
+          - { name: total,   type: N }
+          - { name: status,  type: S }
+
+  # ─── Couchbase schema ───
+  catalog_couchbase:
+    source_name: catalog_couchbase
+    collections:
+      - name: products
+        description: Product catalog with inventory
+        fields:
+          - { name: id,          type: string }
+          - { name: name,        type: string }
+          - { name: description, type: string }
+          - { name: price,       type: number }
+          - { name: category,    type: string }
+          - { name: tags,        type: array }
+          - { name: in_stock,    type: boolean }
+
+
+# ══════════════════════════════════════════════════════
+# Agent configuration
+# ══════════════════════════════════════════════════════
+
+agent_config:
+  - name: database_agent
+    display_name: Unified NoSQL Database Agent
+    source_bindings:
+      - product_mongo
+      - session_redis
+      - timeseries_cassandra
+      - users_dynamodb
+      - catalog_couchbase
+    model: gpt-4o
+    temperature: 0.0
+    max_tokens: 2048
+    system_prompt: |
+      You are a precision NoSQL database routing and query generation agent.
+      You have access to 5 NoSQL databases:
+
+      1. **MongoDB** (product_mongo) — Document store for products, customers, orders
+      2. **Redis** (session_redis) — Key-value store for sessions, carts, leaderboards
+      3. **Cassandra** (timeseries_cassandra) — Wide-column store for sensor data, user activity
+      4. **DynamoDB** (users_dynamodb) — AWS key-value store for user profiles, orders
+      5. **Couchbase** (catalog_couchbase) — Document store with N1QL for product catalog
+
+      DECISION PROCESS:
+      1. Analyze the question to determine data access pattern
+      2. Choose the database that best fits the query semantics
+      3. Generate a native query for that specific database
+      4. Return valid JSON matching the output structure
+
+      SECURITY:
+      - Generate ONLY read-only queries
+      - NO mutations (INSERT, UPDATE, DELETE, DROP)
+      - Use only fields from the schema context
+
+    output_format: json
+    output_structure:
+      db_type: string
+      source_name: string
+      query: string
+      explanation: string
+      confidence: number

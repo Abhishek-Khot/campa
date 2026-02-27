@@ -1,0 +1,26 @@
+# Core Dependencies
+python-dotenv==1.0.0
+pyyaml==6.0.1
+pydantic==2.9.2
+
+# LLM
+litellm>=1.30.0
+openai==1.54.0
+
+# MongoDB
+pymongo==4.10.1
+
+# Redis
+redis>=5.0.0
+
+# Cassandra
+cassandra-driver>=3.28.0
+
+# DynamoDB (AWS SDK)
+boto3>=1.34.0
+
+# Couchbase
+couchbase>=4.1.0
+
+# Optional: Rich formatting for CLI
+rich==13.9.4
