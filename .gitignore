@@ -1,7 +1,3 @@
-# Environment variables with credentials
-.env
-.env.local
-.env.production
 
 # Python
 __pycache__/
